@@ -31,9 +31,20 @@ namespace WeakRx
         /// <param name="value">Next element in the sequence.</param>
         protected override void OnNextCore(T value)
         {
+            var __noError = false;
             TARGET target;
-            if (weakref.TryGetTarget(out target)) onNext(target, value);
-            else Dispose();
+            try
+            {
+                if (weakref.TryGetTarget(out target))
+                {
+                    onNext(target, value);
+                    __noError = true;
+                }
+            }
+            finally
+            { 
+                if (!__noError) Dispose();
+            }
         }
 
         /// <summary>
@@ -69,6 +80,7 @@ namespace WeakRx
                 Dispose();
             }
         }
+
 
         private readonly SingleAssignmentDisposable m = new SingleAssignmentDisposable();
 

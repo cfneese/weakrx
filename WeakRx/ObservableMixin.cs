@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Reactive.Disposables;
 
 namespace WeakRx
 {
@@ -31,10 +32,8 @@ namespace WeakRx
                 throw new ArgumentNullException("onNext");
 
             var observer = new AnonymousWeakObserver<TARGET, T>(target, onNext);
-            var disposable = source.Subscribe(observer);
-            observer.Disposable = disposable;
-
-            return disposable;
+            observer.Disposable = source.Subscribe(observer);
+            return observer;
         }
 
         /// <summary>
@@ -61,10 +60,8 @@ namespace WeakRx
                 throw new ArgumentNullException("onError");
 
             var observer = new AnonymousWeakObserver<TARGET, T>(target, onNext, onError);
-            var disposable = source.Subscribe(observer);
-            observer.Disposable = disposable;
-
-            return disposable;
+            observer.Disposable = source.Subscribe(observer);
+            return observer;
         }
 
         /// <summary>
@@ -91,10 +88,8 @@ namespace WeakRx
                 throw new ArgumentNullException("onCompleted");
 
             var observer = new AnonymousWeakObserver<TARGET, T>(target, onNext, onCompleted);
-            var disposable = source.Subscribe(observer);
-            observer.Disposable = disposable;
-
-            return disposable;
+            observer.Disposable = source.Subscribe(observer);
+            return observer;
         }
 
         /// <summary>
@@ -124,13 +119,13 @@ namespace WeakRx
                 throw new ArgumentNullException("onCompleted");
 
             var observer = new AnonymousWeakObserver<TARGET, T>(target, onNext, onError, onCompleted);
-            var disposable = source.Subscribe(observer);
-            observer.Disposable = disposable;
-
-            return disposable;
+            observer.Disposable = source.Subscribe(observer);
+            return observer;
         }
 
         #endregion
+
+        #region WeakSubscribe overloads with CancellationToken
 
         /// <summary>
         /// Subscribes an element handler to an observable sequence, using a CancellationToken to support unsubscription.
@@ -152,7 +147,7 @@ namespace WeakRx
             if (onNext == null)
                 throw new ArgumentNullException("onNext");
 
-            source.Subscribe(new AnonymousWeakObserver<TARGET, T>(target, onNext), token);
+            source.WeakSubscribe_(new AnonymousWeakObserver<TARGET, T>(target, onNext), token);
         }
 
         /// <summary>
@@ -166,7 +161,7 @@ namespace WeakRx
         /// <param name="onError">Action to invoke upon exceptional termination of the observable sequence.</param>
         /// <param name="token">CancellationToken that can be signaled to unsubscribe from the source sequence.</param>
         /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="target"/> or <paramref name="onNext"/> or <paramref name="onError"/> is null.</exception>
-        public static void WeakSubscribe<TARGET,T>(this IObservable<T> source, TARGET target, Action<TARGET, T> onNext, Action<TARGET, Exception> onError, CancellationToken token)
+        public static void WeakSubscribe<TARGET, T>(this IObservable<T> source, TARGET target, Action<TARGET, T> onNext, Action<TARGET, Exception> onError, CancellationToken token)
             where TARGET : class
         {
             if (source == null)
@@ -178,7 +173,7 @@ namespace WeakRx
             if (onError == null)
                 throw new ArgumentNullException("onError");
 
-            source.Subscribe(new AnonymousWeakObserver<TARGET, T>(target, onNext, onError), token);
+            source.WeakSubscribe_(new AnonymousWeakObserver<TARGET, T>(target, onNext, onError), token);
         }
 
         /// <summary>
@@ -192,7 +187,7 @@ namespace WeakRx
         /// <param name="onCompleted">Action to invoke upon graceful termination of the observable sequence.</param>
         /// <param name="token">CancellationToken that can be signaled to unsubscribe from the source sequence.</param>
         /// <exception cref="ArgumentNullException"><paramref name="source"/> or <paramref name="target"/> or <paramref name="onNext"/> or <paramref name="onCompleted"/> is null.</exception>
-        public static void WeakSubscribe<TARGET,T>(this IObservable<T> source, TARGET target, Action<TARGET, T> onNext, Action<TARGET> onCompleted, CancellationToken token)
+        public static void WeakSubscribe<TARGET, T>(this IObservable<T> source, TARGET target, Action<TARGET, T> onNext, Action<TARGET> onCompleted, CancellationToken token)
              where TARGET : class
         {
             if (source == null)
@@ -204,7 +199,7 @@ namespace WeakRx
             if (onCompleted == null)
                 throw new ArgumentNullException("onCompleted");
 
-            source.Subscribe(new AnonymousWeakObserver<TARGET, T>(target, onNext, onCompleted), token);
+            source.WeakSubscribe_(new AnonymousWeakObserver<TARGET, T>(target, onNext, onCompleted), token);
         }
 
         /// <summary>
@@ -233,9 +228,41 @@ namespace WeakRx
             if (onCompleted == null)
                 throw new ArgumentNullException("onCompleted");
 
-            source.Subscribe(new AnonymousWeakObserver<TARGET, T>(target, onNext, onError, onCompleted), token);
+            source.WeakSubscribe_(new AnonymousWeakObserver<TARGET, T>(target, onNext, onError, onCompleted), token);
         }
 
+        private static void WeakSubscribe_<TARGET, T>(this IObservable<T> source, AnonymousWeakObserver<TARGET,T> observer, CancellationToken token)
+            where TARGET : class
+        {
+            if (token.CanBeCanceled)
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    var r = new SingleAssignmentDisposable();
 
+                    observer.Disposable = source.Subscribe(
+                        observer.OnNext,
+                        ex =>
+                        {
+                            using (r)
+                                observer.OnError(ex);
+                        },
+                        () =>
+                        {
+                            using (r)
+                                observer.OnCompleted();
+                        }
+                    );
+
+                    r.Disposable = token.Register(observer.Dispose);
+                }
+            }
+            else
+            {
+                observer.Disposable = source.Subscribe(observer);
+            }
+        }
+
+        #endregion
     }
 }
